@@ -1,6 +1,6 @@
 {
-  "versionName": "0.2.0",
-  "versionCode": 2,
+  "versionName": "0.3.0",
+  "versionCode": 3,
   "apkUrl": "https://github.com/had0721/local-persona/releases/latest/download/app-debug.apk",
-  "notes": "后台运行、系统悬浮窗进度条、推理过程开关"
+  "notes": "证据绑定画像：每条判断都给出依据和把握"
 }

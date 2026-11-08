@@ -329,7 +329,7 @@ object AnalysisEngine {
             LlamaBridge.nativeGenerate(
                 prompt = prompt,
                 maxTokens = maxTokens,
-                temperature = 0.35f,
+                temperature = 0.25f,
                 topP = 0.9f,
                 topK = 40,
                 minP = 0.05f,

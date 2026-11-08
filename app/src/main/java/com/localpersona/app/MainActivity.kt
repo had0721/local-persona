@@ -63,11 +63,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.localpersona.app.data.Settings
+import com.localpersona.app.data.Settings as AppSettings
 import com.localpersona.app.engine.AnalysisEngine
 import com.localpersona.app.engine.Phase
 import com.localpersona.app.engine.UiState
 import com.localpersona.app.llm.ModelManager
+import com.localpersona.app.llm.PromptBuilder
 import com.localpersona.app.service.AnalysisService
 import com.localpersona.app.ui.Accent
 import com.localpersona.app.ui.Mono
@@ -459,13 +460,73 @@ private fun ResultCard(state: UiState) {
                 }
             }
             HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
-            SelectionContainer {
+            val claims = if (state.phase == Phase.GENERATING) emptyList() else PromptBuilder.parseClaims(state.answer)
+            if (claims.isEmpty()) {
+                SelectionContainer {
+                    Text(
+                        state.answer.ifBlank { "…" },
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            } else {
+                val lead = PromptBuilder.overview(state.answer)
+                if (lead.isNotBlank()) {
+                    Text(
+                        lead,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                claims.forEach { claim -> ClaimRow(claim) }
+                val edge = PromptBuilder.boundary(state.answer)
+                if (edge.isNotBlank()) {
+                    Text(
+                        edge,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClaimRow(claim: PromptBuilder.Claim) {
+    val tone = when (claim.confidence.take(1)) {
+        "高" -> Accent
+        "中" -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.error
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    state.answer.ifBlank { "…" },
-                    style = MaterialTheme.typography.bodyLarge,
+                    claim.judgment,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    claim.confidence.ifBlank { "—" },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = tone,
                 )
             }
+            Text(
+                "依据：${claim.evidence}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -629,7 +690,7 @@ private fun ToggleRow(
 }
 
 private class UpdateState(ctx: Context) {
-    private val settings = Settings(ctx)
+    private val settings = AppSettings(ctx)
     var autoUpdate by mutableStateOf(settings.autoUpdate)
     var mirror by mutableStateOf(settings.updateMirror)
     var busy by mutableStateOf(false)
