@@ -2,25 +2,34 @@ package com.localpersona.app.data
 
 import android.content.Context
 
+data class AppProfile(
+    val category: String,
+    val ageBand: String = "",
+    val name: String = "",
+    val note: String = "",
+)
+
 /**
- * 包名 → 类目。
+ * 包名 → 类目（+ 常见应用的人群标签）。
  *
  * 这是整套方案里最关键的提速部件：把上百个包名在本地压成一小组统计，
  * 0.8B 模型只负责写作，不用去“认识”每一个包名。
+ *
+ * 表里已经写了 60 个常见应用的典型年龄和人群备注，
+ * 命中的就直接用，不再联网；联网只留给真正认不出来的长尾应用。
  */
 class CategoryMap private constructor(
-    private val exact: Map<String, String>,
-    private val prefixes: List<Pair<String, String>>,
+    private val exact: Map<String, AppProfile>,
+    private val prefixes: List<Pair<String, AppProfile>>,
 ) {
 
-    fun categoryOf(pkg: String): String? {
+    fun profileOf(pkg: String): AppProfile? {
         exact[pkg]?.let { return it }
-        // 最长前缀优先
-        var best: String? = null
+        var best: AppProfile? = null
         var bestLen = 0
-        for ((p, c) in prefixes) {
+        for ((p, prof) in prefixes) {
             if (pkg.startsWith(p) && p.length > bestLen) {
-                best = c
+                best = prof
                 bestLen = p.length
             }
         }
@@ -28,9 +37,11 @@ class CategoryMap private constructor(
         return heuristic(pkg)
     }
 
-    private fun heuristic(pkg: String): String? {
+    fun categoryOf(pkg: String): String? = profileOf(pkg)?.category
+
+    private fun heuristic(pkg: String): AppProfile? {
         val p = pkg.lowercase()
-        return when {
+        val cat = when {
             p.contains("vpn") || p.contains("proxy") || p.contains("clash") ||
                 p.contains("v2ray") || p.contains("shadowsocks") || p.contains("socks") -> "网络工具"
             p.contains("bank") || p.contains("banking") -> "银行"
@@ -49,14 +60,15 @@ class CategoryMap private constructor(
                 p.startsWith("com.huawei.") || p.startsWith("com.samsung.") -> "系统组件"
             else -> null
         }
+        return cat?.let { AppProfile(it) }
     }
 
     companion object {
         private const val ASSET = "app_map.tsv"
 
         fun load(ctx: Context): CategoryMap {
-            val exact = HashMap<String, String>(1024)
-            val prefixes = ArrayList<Pair<String, String>>(256)
+            val exact = HashMap<String, AppProfile>(1024)
+            val prefixes = ArrayList<Pair<String, AppProfile>>(256)
             runCatching {
                 ctx.assets.open(ASSET).bufferedReader().useLines { lines ->
                     for (raw in lines) {
@@ -67,17 +79,22 @@ class CategoryMap private constructor(
                         val key = parts[0].trim()
                         val cat = parts[1].trim()
                         if (key.isEmpty() || cat.isEmpty()) continue
+                        val profile = AppProfile(
+                            category = cat,
+                            ageBand = parts.getOrNull(2)?.trim().orEmpty(),
+                            name = parts.getOrNull(3)?.trim().orEmpty(),
+                            note = parts.getOrNull(4)?.trim().orEmpty(),
+                        )
                         if (key.endsWith(".*")) {
-                            prefixes.add(key.dropLast(2) to cat)
+                            prefixes.add(key.dropLast(2) to profile)
                         } else {
-                            exact[key] = cat
+                            exact[key] = profile
                         }
                     }
                 }
             }
-            // 常见厂商前缀兜底
             if (prefixes.isEmpty()) {
-                prefixes.add("com.tencent." to "腾讯系")
+                prefixes.add("com.tencent." to AppProfile("腾讯系"))
             }
             return CategoryMap(exact, prefixes)
         }

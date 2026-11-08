@@ -3,7 +3,7 @@ package com.localpersona.app.data
 import java.util.Locale
 
 /**
- * 分析用的“种子”。这是唯一会被送进模型的东西，控制在 300 token 上下。
+ * 分析用的“种子”。这是唯一会被送进模型的东西，控制在 350 token 上下。
  */
 data class AnalysisSeed(
     val facts: DeviceFacts,
@@ -13,6 +13,8 @@ data class AnalysisSeed(
     val signals: List<String>,
     val unmappedCount: Int,
     val unmappedPackages: List<String> = emptyList(),
+    val ageMix: List<Pair<String, Int>> = emptyList(),
+    val notable: List<AppProfile> = emptyList(),
 ) {
     fun promptBlock(deviceNote: String? = null): String = buildString {
         append(facts.compact())
@@ -24,6 +26,22 @@ data class AnalysisSeed(
         if (categories.isNotEmpty()) {
             val dist = categories.joinToString("、") { "${it.first} ${it.second}" }
             append("类目分布（前 ${categories.size}）：$dist。\n")
+        }
+        if (ageMix.isNotEmpty()) {
+            val mix = ageMix.joinToString("、") { "${it.first} 岁 ${it.second}" }
+            append("典型年龄结构（按应用数加权，全年龄类已剔除）：$mix。\n")
+        }
+        if (notable.isNotEmpty()) {
+            val apps = notable.joinToString("、") {
+                buildString {
+                    append(it.name.ifBlank { it.category })
+                    append("（").append(it.category)
+                    if (it.ageBand.isNotBlank()) append("，").append(it.ageBand).append(" 岁")
+                    if (it.note.isNotBlank()) append("，").append(it.note)
+                    append("）")
+                }
+            }
+            append("代表性应用：$apps。\n")
         }
         if (signals.isNotEmpty()) {
             append("显著信号：\n")
@@ -44,25 +62,45 @@ data class AnalysisSeed(
 object FeaturePacker {
 
     private const val MAX_UNMAPPED = 12
+    private const val MAX_NOTABLE = 6
+    private const val ALL_AGES = "全年龄"
 
     fun pack(apps: List<InstalledApp>, map: CategoryMap, facts: DeviceFacts): AnalysisSeed {
         val thirdParty = apps.filter { !it.system }
         val system = apps.size - thirdParty.size
 
         val counts = HashMap<String, Int>(64)
+        val ageCounts = HashMap<String, Int>(16)
+        val notable = ArrayList<AppProfile>(8)
+        val notableCats = HashSet<String>(8)
         val unmappedPkgs = ArrayList<String>(32)
+
         for (app in thirdParty) {
-            val c = map.categoryOf(app.pkg)
-            if (c == null) {
+            val prof = map.profileOf(app.pkg)
+            if (prof == null) {
                 if (unmappedPkgs.size < MAX_UNMAPPED) unmappedPkgs.add(app.pkg)
-            } else {
-                counts[c] = (counts[c] ?: 0) + 1
+                continue
+            }
+            counts[prof.category] = (counts[prof.category] ?: 0) + 1
+            if (prof.ageBand.isNotBlank() && prof.ageBand != ALL_AGES) {
+                ageCounts[prof.ageBand] = (ageCounts[prof.ageBand] ?: 0) + 1
+            }
+            // 有备注、且不是“谁都有”的通用应用，才算代表性
+            if (prof.note.isNotBlank() && !prof.note.contains("区分度低") &&
+                notable.size < MAX_NOTABLE && notableCats.add(prof.category)
+            ) {
+                notable.add(prof)
             }
         }
 
         val ordered = counts.entries
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
             .take(12)
+            .map { it.key to it.value }
+
+        val ageOrdered = ageCounts.entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .take(5)
             .map { it.key to it.value }
 
         val signals = SignalRules.detect(thirdParty.map { it.pkg })
@@ -75,6 +113,8 @@ object FeaturePacker {
             signals = signals,
             unmappedCount = thirdParty.size - counts.values.sum(),
             unmappedPackages = unmappedPkgs,
+            ageMix = ageOrdered,
+            notable = notable,
         )
     }
 

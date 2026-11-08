@@ -1,21 +1,21 @@
-# 包名	类目（本地映射表：先本地命中，命中不了的才去搜）
-com.tencent.mm	社交
-com.tencent.mobileqq	社交
-com.sina.weibo	社交
-com.xingin.xhs	社交
-com.zhihu.android	社交
-com.douban.frodo	社交
-org.telegram.messenger	社交
-com.whatsapp	社交
-com.instagram.android	社交
-com.twitter.android	社交
-com.discord	社交
+# 包名	类目	典型年龄	应用名	人群备注（本地表，命中就不联网）
+com.tencent.mm	社交	全年龄	微信	国民级通讯工具，区分度低
+com.tencent.mobileqq	社交	12-25	QQ	学生群体为主
+com.sina.weibo	社交	18-35	微博	热点与公共议题
+com.xingin.xhs	社交	18-35	小红书	女性偏多，一二线城市
+com.zhihu.android	社交	20-38	知乎	一二线，学历偏高
+com.douban.frodo	社交	20-38	豆瓣	文艺向，一二线
+org.telegram.messenger	社交	20-40	Telegram	跨境/技术圈
+com.whatsapp	社交	全年龄	WhatsApp	海外联系人网络
+com.instagram.android	社交	16-35	Instagram	海外生活方式
+com.twitter.android	社交	18-38	X	资讯与公共讨论
+com.discord	社交	16-30	Discord	游戏社群
 com.facebook.katana	社交
 com.linkedin.android	社交
 com.snapchat.android	社交
 jp.naver.line.android	社交
-com.immomo.momo	社交
-cn.soulapp.android	社交
+com.immomo.momo	社交	20-35	陌陌	陌生人社交
+cn.soulapp.android	社交	18-30	Soul	年轻陌生人社交
 com.p1.mobile.putong	社交
 com.taou.maimai	社交
 com.tencent.wework	社交
@@ -23,14 +23,14 @@ com.alibaba.android.rimet	社交
 com.ss.android.lark	社交
 us.zoom.videomeetings	办公
 com.tencent.meeting	办公
-com.ss.android.ugc.aweme	短视频
+com.ss.android.ugc.aweme	短视频	18-40	抖音	覆盖一二线到下沉市场
 com.ss.android.ugc.aweme.lite	短视频
-com.smile.gifmaker	短视频
-tv.danmaku.bili	短视频
+com.smile.gifmaker	短视频	20-45	快手	下沉市场占比高
+tv.danmaku.bili	短视频	16-28	哔哩哔哩	学生与年轻白领
 com.zhiliaoapp.musically	短视频
-com.google.android.youtube	短视频
-com.qiyi.video	长视频
-com.tencent.qqlive	长视频
+com.google.android.youtube	长视频	全年龄	YouTube	海外内容消费
+com.qiyi.video	长视频	全年龄	爱奇艺	追剧
+com.tencent.qqlive	长视频	全年龄	腾讯视频	追剧与综艺
 com.youku.phone	长视频
 com.hunantv.imgo.activity	长视频
 com.duowan.kiwi	长视频
@@ -39,17 +39,17 @@ tv.twitch.android.app	长视频
 com.netflix.mediaclient	长视频
 com.disney.disneyplus	长视频
 com.mxtech.videoplayer.ad	长视频
-com.netease.cloudmusic	音乐
-com.tencent.qqmusic	音乐
+com.netease.cloudmusic	音乐	16-32	网易云音乐	年轻，评论区文化
+com.tencent.qqmusic	音乐	16-35	QQ音乐
 com.kugou.android	音乐
 cn.kuwo.player	音乐
-com.spotify.music	音乐
+com.spotify.music	音乐	16-35	Spotify	海外音乐
 com.google.android.apps.youtube.music	音乐
-com.ximalaya.ting.android	音乐
+com.ximalaya.ting.android	音乐	25-45	喜马拉雅	有声书与知识付费
 fm.qingting.qtradio	音乐
 com.apple.android.music	音乐
-com.qidian.QDReader	阅读
-com.tencent.weread	阅读
+com.qidian.QDReader	阅读	16-32	起点读书	男频网文
+com.tencent.weread	阅读	22-40	微信读书	知识型阅读
 com.chaozh.iReaderFree	阅读
 com.douban.book.reader	阅读
 com.amazon.kindle	阅读
@@ -63,12 +63,12 @@ com.ifeng.news2	资讯
 com.sohu.newsclient	资讯
 com.google.android.apps.magazines	资讯
 flipboard.app	资讯
-com.smzdm.client.android	资讯
-com.taobao.taobao	电商
+com.smzdm.client.android	资讯	25-40	什么值得买	价格敏感型购物
+com.taobao.taobao	电商	全年龄	淘宝
 com.tmall.wireless	电商
-com.jingdong.app.mall	电商
-com.xunmeng.pinduoduo	电商
-com.achievo.vipshop	电商
+com.jingdong.app.mall	电商	25-45	京东	数码家电，男性偏多
+com.xunmeng.pinduoduo	电商	30-55	拼多多	下沉市场与价格敏感
+com.achievo.vipshop	电商	25-45	唯品会	品牌折扣，女性偏多
 com.suning.mobile.ebuy	电商
 com.kaola	电商
 com.alibaba.aliexpresshd	电商
@@ -78,9 +78,9 @@ com.shein	电商
 com.einnovation.temu	电商
 com.walmart.android	电商
 com.contextlogic.wish	电商
-com.taobao.idlefish	二手
+com.taobao.idlefish	二手	18-35	闲鱼	二手交易
 com.zhuanzhuan.zzclient	二手
-com.eg.android.AlipayGphone	支付
+com.eg.android.AlipayGphone	支付	全年龄	支付宝
 com.unionpay	支付
 com.paypal.android.p2pmobile	支付
 com.venmo	支付
@@ -99,14 +99,14 @@ com.cgbchina.xpt	银行
 com.chase.sig.android	银行
 com.infonow.bofa	银行
 com.wf.wellsfargomobile	银行
-com.eastmoney.android.berlin	证券
-com.hexin.plat.android	证券
+com.eastmoney.android.berlin	证券	25-50	东方财富	有投资行为
+com.hexin.plat.android	证券	25-50	同花顺	行情与交易
 com.eastmoney.android.fund	证券
 com.xueqiu.android	证券
 com.futu.mobile	证券
 com.tigerbrokers.stock	证券
 com.htsc.mdcs	证券
-com.binance.dev	加密金融
+com.binance.dev	加密金融	20-40	币安	加密资产
 com.okinc.okex.gp	加密金融
 com.coinbase.android	加密金融
 io.metamask	加密金融
@@ -115,11 +115,11 @@ com.kraken.invest.app	加密金融
 im.token.app	加密金融
 com.trustwallet.app	加密金融
 com.ledger.live	加密金融
-com.miHoYo.Yuanshen	游戏
+com.miHoYo.Yuanshen	游戏	16-28	原神	二次元，付费意愿高
 com.miHoYo.hkrpg	游戏
-com.tencent.tmgp.sgame	游戏
+com.tencent.tmgp.sgame	游戏	14-30	王者荣耀	国民级手游
 com.tencent.tmgp.pubgmhd	游戏
-com.mojang.minecraftpe	游戏
+com.mojang.minecraftpe	游戏	10-25	我的世界	沙盒
 com.supercell.clashofclans	游戏
 com.supercell.brawlstars	游戏
 com.roblox.client	游戏
@@ -133,8 +133,8 @@ com.tencent.lolm	游戏
 com.papegames.nn4	游戏
 com.hypergryph.arknights	游戏
 com.garena.game.kgtw	游戏
-com.termux	开发
-com.github.android	开发
+com.termux	开发	20-40	Termux	极客/开发者
+com.github.android	开发	20-40	GitHub	开发者
 com.itsaky.androidide	开发
 com.aide.ui	开发
 com.termux.api	开发
@@ -160,8 +160,8 @@ com.evernote	效率
 com.yinxiang	效率
 com.todoist	效率
 com.tencent.docs	效率
-com.duolingo	学习
-com.youdao.dict	学习
+com.duolingo	学习	18-35	多邻国	语言学习
+com.youdao.dict	学习	18-35	有道词典	英语学习
 com.eusoft.eudic	学习
 com.baicizhan	学习
 com.jiongji.andriod.card	学习
@@ -171,8 +171,8 @@ com.netease.edu.ucmooc	学习
 com.coursera.android	学习
 com.ted.android	学习
 com.khanacademy.android	学习
-com.gotokeep.keep	健康
-com.codoon.gps	健康
+com.gotokeep.keep	健康	20-35	Keep	健身自律
+com.codoon.gps	健康	25-45	咕咚	跑步
 com.strava	健康
 com.fitbit.FitbitMobile	健康
 com.myfitnesspal.android	健康
@@ -180,31 +180,31 @@ com.boohee.one	健康
 com.huawei.health	健康
 com.xiaomi.hm.health	健康
 com.google.android.apps.fitness	健康
-com.dxy.doctor	健康
+com.dxy.doctor	健康	25-50	丁香医生	健康关注
 com.haodf.android	健康
 com.lifesense.android	健康
-com.sdu.didi.psnger	出行
-com.ubercab	出行
+com.sdu.didi.psnger	出行	20-45	滴滴出行
+com.ubercab	出行	20-40	Uber	海外出行
 com.jingyao.easybike	出行
 com.hellobike.app	出行
 com.MobileTicket	出行
 com.umetrip.android.msky.app	出行
-com.autonavi.minimap	地图
+com.autonavi.minimap	地图	全年龄	高德地图
 com.baidu.BaiduMap	地图
 com.google.android.apps.maps	地图
 com.waze	地图
 com.mapswithme.maps.pro	地图
-me.ele	外卖
-com.sankuai.meituan	外卖
+me.ele	外卖	20-35	饿了么
+com.sankuai.meituan	外卖	20-40	美团	本地生活
 com.sankuai.meituan.takeoutnew	外卖
 com.dianping.v1	外卖
 com.dd.doordash	外卖
 com.starbucks.cn	外卖
 com.yum.kfc	外卖
-ctrip.android.view	旅行
+ctrip.android.view	旅行	25-45	携程	差旅与旅游
 com.taobao.trip	旅行
 com.Qunar	旅行
-com.airbnb.android	旅行
+com.airbnb.android	旅行	22-40	Airbnb
 com.booking	旅行
 com.tripadvisor.tripadvisor	旅行
 com.laterooms.tyro	旅行
@@ -227,28 +227,28 @@ com.byd.dilink	汽车
 com.xpeng.app	汽车
 com.autohome.main	汽车
 com.dongchedi.app	汽车
-com.hpbr.bosszhipin	招聘
+com.hpbr.bosszhipin	招聘	22-40	BOSS直聘	求职/招聘中
 com.lagou.job	招聘
 com.zhaopin.zhaopin	招聘
-com.lianjia.beike	房产
+com.lianjia.beike	房产	25-45	贝壳找房	买房/租房
 com.homelink.mobile	房产
 com.anjuke.android.app	房产
-com.babytree.apps.pregnancy	母婴
+com.babytree.apps.pregnancy	母婴	25-38	宝宝树	有孩子或备孕
 com.babycloud.hanju	母婴
 com.beva.baby	母婴
 com.boqii.petlife	宠物
 com.tinder	婚恋
 com.bumble.app	婚恋
 com.badoo.mobile	婚恋
-cn.damai	票务
+cn.damai	票务	18-35	大麦	演出与演唱会
 com.maoyan.ffdy	票务
 com.piaoxingqiu.app	票务
 com.gewara	票务
-com.openai.chatgpt	AI
-com.deepseek.chat	AI
+com.openai.chatgpt	AI	18-40	ChatGPT	AI 使用者
+com.deepseek.chat	AI	18-40	DeepSeek	AI 使用者
 com.anthropic.claude	AI
 com.microsoft.copilot	AI
-com.larus.nova	AI
+com.larus.nova	AI	全年龄	豆包	AI 使用者
 ai.x.grok	AI
 com.moonshot.kimi	AI
 com.baidu.baiduapp	AI
@@ -278,9 +278,9 @@ com.tencent.androidqqmail	邮件
 com.tmri.app.main	政务
 cn.gov.tax	政务
 com.chinanetcenter.app	政务
-io.nekohasekai.sagernet	网络工具
+io.nekohasekai.sagernet	网络工具	20-40	SagerNet	代理工具
 com.github.kr328.clash	网络工具
-
+com.netease.g*	游戏
 # 前缀规则：以 .* 结尾，最长前缀优先
 com.google.*	Google 服务
 com.android.*	系统组件
@@ -295,4 +295,3 @@ com.supercell.*	游戏
 com.ea.gp.*	游戏
 com.gameloft.*	游戏
 com.rovio.*	游戏
-com.netease.g*	游戏
