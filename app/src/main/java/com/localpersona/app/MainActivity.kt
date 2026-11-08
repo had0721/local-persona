@@ -22,9 +22,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.outlined.Download
-import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -104,7 +104,7 @@ private fun PersonaScreen(vm: PersonaViewModel) {
                 actions = {
                     IconButton(onClick = { showSettings = true }) {
                         Icon(
-                            Icons.Outlined.Settings,
+                            Icons.Filled.Settings,
                             contentDescription = "设置",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -477,7 +477,7 @@ private fun SettingsDialog(state: UiState, vm: PersonaViewModel, onDismiss: () -
                             Text("下载")
                         }
                         TextButton(onClick = { vm.deleteModel() }) {
-                            Icon(Icons.Outlined.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("删除")
                         }

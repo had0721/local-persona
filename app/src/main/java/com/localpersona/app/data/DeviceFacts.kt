@@ -54,7 +54,11 @@ data class DeviceFacts(
             val cfg = ctx.resources.configuration
             val wIn = dm.widthPixels / dm.xdpi
             val hIn = dm.heightPixels / dm.ydpi
-            val diag = if (wIn > 0 && hIn > 0) kotlin.math.sqrt(wIn * wIn + hIn * hIn) else 0.0
+            val diag = if (wIn > 0 && hIn > 0) {
+                kotlin.math.sqrt((wIn * wIn + hIn * hIn).toDouble())
+            } else {
+                0.0
+            }
 
             val locale: Locale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                 cfg.locales.get(0) ?: Locale.getDefault()
