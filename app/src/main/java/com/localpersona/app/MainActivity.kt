@@ -697,12 +697,12 @@ private class UpdateState(ctx: Context) {
     var message by mutableStateOf("")
     var found by mutableStateOf<UpdateChecker.Info?>(null)
 
-    fun setAuto(v: Boolean) {
+    fun applyAuto(v: Boolean) {
         autoUpdate = v
         settings.autoUpdate = v
     }
 
-    fun setMirror(v: String) {
+    fun applyMirror(v: String) {
         mirror = v
         settings.updateMirror = v
     }
@@ -757,12 +757,12 @@ private fun UpdateSection(activity: ComponentActivity, update: UpdateState) {
                 )
             }
             Spacer(Modifier.width(10.dp))
-            Switch(checked = update.autoUpdate, onCheckedChange = { update.setAuto(it) })
+            Switch(checked = update.autoUpdate, onCheckedChange = { update.applyAuto(it) })
         }
 
         OutlinedTextField(
             value = update.mirror,
-            onValueChange = { update.setMirror(it) },
+            onValueChange = { update.applyMirror(it) },
             label = { Text("GitHub 镜像前缀（可选）") },
             placeholder = { Text("https://ghfast.top") },
             singleLine = true,
