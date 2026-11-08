@@ -78,6 +78,19 @@ jobs:
           path: ~/.android/debug.keystore
           key: persona-debug-keystore-v1
 
+      - name: Restore signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.PERSONA_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            mkdir -p ~/.android
+            printf '%s' "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+            chmod 600 ~/.android/debug.keystore
+            keytool -list -keystore ~/.android/debug.keystore -storepass android | head -3
+          else
+            echo "no keystore secret, falling back to cached key"
+          fi
+
       - name: Assemble debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 

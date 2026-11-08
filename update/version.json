@@ -1,6 +1,6 @@
 {
-  "versionName": "0.7.0",
-  "versionCode": 7,
+  "versionName": "0.8.0",
+  "versionCode": 8,
   "apkUrl": "https://github.com/had0721/local-persona/releases/latest/download/app-debug.apk",
-  "notes": "平板双栏适配 + 圆角与间距调整"
+  "notes": "固定签名密钥，之后版本可直接覆盖安装"
 }
