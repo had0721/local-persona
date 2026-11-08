@@ -1,6 +1,7 @@
 package com.localpersona.app
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -39,6 +40,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -48,9 +50,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.localpersona.app.data.Settings
 import com.localpersona.app.engine.AnalysisEngine
 import com.localpersona.app.engine.Phase
 import com.localpersona.app.engine.UiState
@@ -67,6 +72,10 @@ import com.localpersona.app.service.AnalysisService
 import com.localpersona.app.ui.Accent
 import com.localpersona.app.ui.Mono
 import com.localpersona.app.ui.PersonaTheme
+import com.localpersona.app.update.ApkInstaller
+import com.localpersona.app.update.UpdateChecker
+import kotlinx.coroutines.launch
+import java.io.File
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
@@ -86,6 +95,11 @@ private fun PersonaScreen(activity: ComponentActivity) {
     val state by AnalysisEngine.state.collectAsStateWithLifecycle()
     var showSettings by remember { mutableStateOf(false) }
     var showThinkingBody by remember { mutableStateOf(false) }
+    val update = remember { UpdateState(activity) }
+
+    LaunchedEffect(Unit) {
+        if (update.autoUpdate) checkForUpdate(activity, update, install = false)
+    }
 
     val notifPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -139,6 +153,7 @@ private fun PersonaScreen(activity: ComponentActivity) {
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             DeviceStrip(state)
+            UpdateBanner(update, activity)
             MetricRow(state)
             if (state.enrichText.isNotBlank()) EnrichLine(state.enrichText)
             StepLine(state.step)
@@ -159,7 +174,7 @@ private fun PersonaScreen(activity: ComponentActivity) {
     }
 
     if (showSettings) {
-        SettingsDialog(state, activity) { showSettings = false }
+        SettingsDialog(state, activity, update) { showSettings = false }
     }
 }
 
@@ -499,7 +514,12 @@ private fun Footer(state: UiState) {
 }
 
 @Composable
-private fun SettingsDialog(state: UiState, activity: ComponentActivity, onDismiss: () -> Unit) {
+private fun SettingsDialog(
+    state: UiState,
+    activity: ComponentActivity,
+    update: UpdateState,
+    onDismiss: () -> Unit,
+) {
     fun openOverlayPermission() {
         val intent = Intent(
             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -570,6 +590,10 @@ private fun SettingsDialog(state: UiState, activity: ComponentActivity, onDismis
 
                 HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
 
+                UpdateSection(activity, update)
+
+                HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
+
                 Text(
                     "本地画像 v0.2 · llama.cpp + Qwen3.5-0.8B",
                     style = MaterialTheme.typography.bodySmall,
@@ -602,4 +626,149 @@ private fun ToggleRow(
         Spacer(Modifier.width(10.dp))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
+}
+
+private class UpdateState(ctx: Context) {
+    private val settings = Settings(ctx)
+    var autoUpdate by mutableStateOf(settings.autoUpdate)
+    var mirror by mutableStateOf(settings.updateMirror)
+    var busy by mutableStateOf(false)
+    var message by mutableStateOf("")
+    var found by mutableStateOf<UpdateChecker.Info?>(null)
+
+    fun setAuto(v: Boolean) {
+        autoUpdate = v
+        settings.autoUpdate = v
+    }
+
+    fun setMirror(v: String) {
+        mirror = v
+        settings.updateMirror = v
+    }
+}
+
+@Composable
+private fun UpdateBanner(update: UpdateState, activity: ComponentActivity) {
+    val info = update.found ?: return
+    val scope = rememberCoroutineScope()
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "发现新版本 ${info.versionName}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (info.notes.isNotBlank()) {
+                    Text(
+                        info.notes,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.width(10.dp))
+            TextButton(
+                enabled = !update.busy,
+                onClick = { scope.launch { downloadAndInstall(activity, update, info) } },
+            ) { Text("更新") }
+        }
+    }
+}
+
+@Composable
+private fun UpdateSection(activity: ComponentActivity, update: UpdateState) {
+    val scope = rememberCoroutineScope()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("自动检查更新", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "启动时静默检查，有新版本会在首页提示",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Switch(checked = update.autoUpdate, onCheckedChange = { update.setAuto(it) })
+        }
+
+        OutlinedTextField(
+            value = update.mirror,
+            onValueChange = { update.setMirror(it) },
+            label = { Text("GitHub 镜像前缀（可选）") },
+            placeholder = { Text("https://ghfast.top") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            "留空则直连 github.com；填了就把 GitHub 地址套在这个前缀后面",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(
+                enabled = !update.busy,
+                onClick = { scope.launch { checkForUpdate(activity, update, install = true) } },
+            ) { Text("检查并更新") }
+            if (update.message.isNotBlank()) {
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    update.message,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private suspend fun checkForUpdate(ctx: Context, st: UpdateState, install: Boolean) {
+    st.busy = true
+    st.message = "正在检查…"
+    val info = UpdateChecker.check(UpdateChecker.DEFAULT_MANIFEST, st.mirror)
+    st.busy = false
+    when {
+        info == null -> {
+            st.message = "检查失败：拉不到版本信息"
+            st.found = null
+        }
+        info.versionCode <= BuildConfig.VERSION_CODE -> {
+            st.message = "已是最新 v${BuildConfig.VERSION_NAME}"
+            st.found = null
+        }
+        else -> {
+            st.found = info
+            st.message = "发现 v${info.versionName}"
+            if (install) downloadAndInstall(ctx, st, info)
+        }
+    }
+}
+
+private suspend fun downloadAndInstall(ctx: Context, st: UpdateState, info: UpdateChecker.Info) {
+    if (!ApkInstaller.canInstall(ctx)) {
+        ApkInstaller.openInstallPermission(ctx)
+        st.message = "请先允许安装未知来源应用"
+        return
+    }
+    val dest = File(ctx.cacheDir, "update/app-debug.apk")
+    st.busy = true
+    st.message = "准备下载…"
+    runCatching {
+        UpdateChecker.download(info.apkUrl, st.mirror, dest) { p ->
+            st.message = "下载中 ${(p * 100).toInt()}%"
+        }
+    }.onSuccess {
+        st.message = if (ApkInstaller.install(ctx, dest)) "已调起安装" else "无法调起安装器"
+    }.onFailure {
+        st.message = "下载失败：${it.message ?: "未知错误"}"
+    }
+    st.busy = false
 }

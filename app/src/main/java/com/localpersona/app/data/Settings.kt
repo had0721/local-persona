@@ -20,6 +20,16 @@ class Settings(ctx: Context) {
         get() = sp.getBoolean("overlay_enabled", true)
         set(v) = sp.edit().putBoolean("overlay_enabled", v).apply()
 
+    /** 启动时自动检查新版本 */
+    var autoUpdate: Boolean
+        get() = sp.getBoolean("auto_update", false)
+        set(v) = sp.edit().putBoolean("auto_update", v).apply()
+
+    /** GitHub 镜像前缀，留空表示直连 */
+    var updateMirror: String
+        get() = sp.getString("update_mirror", "") ?: ""
+        set(v) = sp.edit().putString("update_mirror", v).apply()
+
     var threads: Int
         get() = sp.getInt("threads", 0)
         set(v) = sp.edit().putInt("threads", v).apply()
