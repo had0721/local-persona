@@ -100,7 +100,7 @@ Java_com_localpersona_app_llm_LlamaBridge_nativeLoadModel(JNIEnv * env, jobject 
 
     llama_model_params mp = llama_model_default_params();
     mp.n_gpu_layers = 0;
-    mp.use_mmap     = true;
+    // v0.9.0 起 mmap 由 load_mode 控制，默认即 mmap，无需单独设置
 
     LOGI("loading model: %s", path);
     llama_model * model = llama_model_load_from_file(path, mp);

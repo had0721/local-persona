@@ -26,7 +26,7 @@ object ModelManager {
         id = "qwen3.5-0.8b-q4km",
         label = "Qwen3.5-0.8B · Q4_K_M（约 508 MB）",
         fileName = "Qwen3.5-0.8B-Q4_K_M.gguf",
-        approxBytes = 532_464_000L,
+        approxBytes = 532_517_120L,
         mirrors = listOf(
             "https://hf-mirror.com/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf?download=true",
         ),
