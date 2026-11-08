@@ -1,8 +1,6 @@
-package com.localpersona.app.ui
+package com.localpersona.app.engine
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
+import android.content.Context
 import com.localpersona.app.data.AnalysisSeed
 import com.localpersona.app.data.AppScanner
 import com.localpersona.app.data.CategoryMap
@@ -15,8 +13,10 @@ import com.localpersona.app.llm.PromptBuilder
 import com.localpersona.app.net.Enrichment
 import com.localpersona.app.net.SearchCache
 import com.localpersona.app.net.SearchResolver
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,28 +32,31 @@ enum class Phase { IDLE, SCANNING, DOWNLOADING, LOADING, GENERATING, DONE, ERROR
 data class UiState(
     val phase: Phase = Phase.IDLE,
     val status: String = "点击开始，全部在本机完成",
+    val progress: Float = 0f,
     val deviceHeadline: String = "",
     val deviceDetail: String = "",
     val seedSummary: String = "",
     val hitRate: String = "",
     val appsCount: Int = 0,
-    val streamed: String = "",
-    val progress: Float = 0f,
+    val thinking: String = "",
+    val answer: String = "",
+    val enrichText: String = "",
     val transferText: String = "",
     val error: String? = null,
     val elapsedMs: Long = 0,
     val tokensPerSec: Float = 0f,
     val modelReady: Boolean = false,
-    val modelLoaded: Boolean = false,
+    val showThinking: Boolean = false,
     val showSeed: Boolean = false,
-    val searchEnabled: Boolean = true,
-    val enrichText: String = "",
+    val overlayEnabled: Boolean = true,
     val seedText: String = "",
-    val nativeInfo: String = "",
 ) {
     val busy: Boolean
         get() = phase == Phase.SCANNING || phase == Phase.DOWNLOADING ||
             phase == Phase.LOADING || phase == Phase.GENERATING
+
+    val finished: Boolean
+        get() = phase == Phase.DONE || phase == Phase.ERROR
 
     val step: Int
         get() = when (phase) {
@@ -65,56 +68,63 @@ data class UiState(
         }
 }
 
-class PersonaViewModel(app: Application) : AndroidViewModel(app) {
+/**
+ * 全局单例：分析的执行与状态都在这里，和 Activity 生命周期无关。
+ * 前台服务持有它，所以切后台、锁屏、Activity 重建都不会中断推理。
+ */
+object AnalysisEngine {
 
-    private val settings = Settings(app)
-    private val _state = MutableStateFlow(
-        UiState(
-            modelReady = ModelManager.isReady(app),
-            showSeed = settings.showSeed,
-            searchEnabled = settings.searchEnabled,
-        )
-    )
+    private var app: Context? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private var job: Job? = null
-    private var warmJob: Job? = null
 
     @Volatile
     private var cancelRequested = false
 
-    init {
+    private fun settings(): Settings? = app?.let { Settings(it) }
+
+    fun attach(ctx: Context) {
+        if (app != null) return
+        app = ctx.applicationContext
         runCatching { LlamaBridge.nativeInit() }
-        // 预热：模型已下载时，进 App 就开始读进内存。
-        // 这样用户第一次点「开始」时，加载那 2~5 秒已经被藏掉了。
+        val s = Settings(app!!)
+        _state.value = _state.value.copy(
+            modelReady = ModelManager.isReady(app!!),
+            showThinking = s.showThinking,
+            showSeed = s.showSeed,
+            overlayEnabled = s.overlayEnabled,
+        )
         if (_state.value.modelReady) warmUp()
     }
 
-    fun warmUp() {
-        if (warmJob?.isActive == true || LlamaBridge.nativeIsLoaded()) return
-        warmJob = viewModelScope.launch(Dispatchers.Default) {
-            val ctx = getApplication<Application>()
-            if (!ModelManager.isReady(ctx)) return@launch
-            val path = ModelManager.modelFile(ctx).absolutePath
-            val rc = runCatching { LlamaBridge.nativeLoadModel(path) }.getOrDefault(-1)
-            if (rc == 0) {
-                _state.value = _state.value.copy(modelLoaded = true, nativeInfo = LlamaBridge.systemInfo())
-            }
-        }
-    }
-
-    fun refreshModelState() {
-        _state.value = _state.value.copy(modelReady = ModelManager.isReady(getApplication()))
+    fun setShowThinking(v: Boolean) {
+        settings()?.showThinking = v
+        _state.value = _state.value.copy(showThinking = v)
     }
 
     fun setShowSeed(v: Boolean) {
-        settings.showSeed = v
+        settings()?.showSeed = v
         _state.value = _state.value.copy(showSeed = v)
     }
 
-    fun setSearchEnabled(v: Boolean) {
-        settings.searchEnabled = v
-        _state.value = _state.value.copy(searchEnabled = v)
+    fun setOverlayEnabled(v: Boolean) {
+        settings()?.overlayEnabled = v
+        _state.value = _state.value.copy(overlayEnabled = v)
+    }
+
+    val isRunning: Boolean get() = job?.isActive == true
+
+    fun warmUp() {
+        val ctx = app ?: return
+        if (LlamaBridge.nativeIsLoaded()) return
+        scope.launch {
+            if (!ModelManager.isReady(ctx)) return@launch
+            val path = ModelManager.modelFile(ctx).absolutePath
+            runCatching { LlamaBridge.nativeLoadModel(path) }
+        }
     }
 
     fun cancel() {
@@ -125,22 +135,20 @@ class PersonaViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteModel() {
-        ModelManager.delete(getApplication())
+        val ctx = app ?: return
+        ModelManager.delete(ctx)
         runCatching { LlamaBridge.nativeFreeModel() }
-        _state.value = _state.value.copy(
-            modelReady = false,
-            modelLoaded = false,
-            status = "模型已删除",
-        )
+        _state.value = _state.value.copy(modelReady = false, status = "模型已删除")
     }
 
-    fun downloadModelOnly() {
-        if (job?.isActive == true) return
+    fun downloadOnly() {
+        val ctx = app ?: return
+        if (isRunning) return
         cancelRequested = false
-        job = viewModelScope.launch {
+        job = scope.launch {
             try {
-                downloadModel()
-                _state.value = _state.value.copy(phase = Phase.IDLE, status = "模型已就绪")
+                downloadModel(ctx)
+                _state.value = _state.value.copy(phase = Phase.IDLE, status = "模型已就绪", progress = 0f)
                 warmUp()
             } catch (t: Throwable) {
                 _state.value = _state.value.copy(phase = Phase.ERROR, error = humanize(t), status = "下载失败")
@@ -148,24 +156,24 @@ class PersonaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun startAnalysis() {
-        if (job?.isActive == true) return
+    fun start() {
+        val ctx = app ?: return
+        if (isRunning) return
         cancelRequested = false
         val started = System.currentTimeMillis()
 
-        job = viewModelScope.launch {
+        job = scope.launch {
             try {
                 _state.value = _state.value.copy(
                     phase = Phase.SCANNING,
                     status = "正在读取已安装应用…",
-                    streamed = "",
+                    progress = 0.03f,
+                    answer = "",
+                    thinking = "",
                     error = null,
                     tokensPerSec = 0f,
-                    progress = 0f,
                 )
 
-                val ctx = getApplication<Application>()
-                // 三件事都是毫秒级，合在后台一次做完
                 val (map, apps, facts) = withContext(Dispatchers.Default) {
                     val m = CategoryMap.load(ctx)
                     val a = AppScanner.scan(ctx)
@@ -175,14 +183,9 @@ class PersonaViewModel(app: Application) : AndroidViewModel(app) {
                 val seed = FeaturePacker.pack(apps, map, facts)
 
                 _state.value = _state.value.copy(
+                    progress = 0.08f,
                     deviceHeadline = "${facts.manufacturer} ${facts.model}".trim(),
-                    deviceDetail = buildString {
-                        append("Android ${facts.androidRelease}")
-                        append(" · ").append(facts.abis.firstOrNull() ?: "arm64-v8a")
-                        append(" · ").append(facts.cores).append(" 核")
-                        append(" · ").append("${"%.0f".format(Locale.US, facts.ramGb)} GB")
-                        append(" · ").append(if (facts.languageTag.startsWith("zh")) "中文" else facts.languageTag)
-                    },
+                    deviceDetail = deviceLine(facts),
                     appsCount = seed.thirdPartyCount,
                     seedSummary = seed.summary(),
                     hitRate = FeaturePacker.formatPercent(FeaturePacker.hitRate(seed)),
@@ -190,12 +193,11 @@ class PersonaViewModel(app: Application) : AndroidViewModel(app) {
                 )
 
                 if (!ModelManager.isReady(ctx)) {
-                    downloadModel()
+                    downloadModel(ctx)
                 }
 
-                // 联网识别与模型加载并行：网络在等，CPU 在加载，两件事同时发生
                 val resolver = SearchResolver(SearchCache(ctx))
-                val enrichJob = if (settings.searchEnabled) {
+                val enrichJob = if (Settings(ctx).searchEnabled) {
                     async {
                         runCatching { resolver.enrich(seed.unmappedPackages, facts.model) }
                             .getOrDefault(Enrichment())
@@ -206,6 +208,7 @@ class PersonaViewModel(app: Application) : AndroidViewModel(app) {
 
                 _state.value = _state.value.copy(
                     phase = Phase.LOADING,
+                    progress = 0.62f,
                     status = if (seed.unmappedPackages.isEmpty()) {
                         "正在加载模型…"
                     } else {
@@ -213,28 +216,19 @@ class PersonaViewModel(app: Application) : AndroidViewModel(app) {
                     },
                 )
 
-                loadModel()
+                loadModel(ctx)
                 val enrich = enrichJob?.await() ?: Enrichment()
                 val finalSeed = FeaturePacker.merge(seed, enrich.categories)
 
                 _state.value = _state.value.copy(
+                    progress = 0.68f,
                     seedText = finalSeed.promptBlock(enrich.deviceNote),
                     seedSummary = finalSeed.summary(),
                     hitRate = FeaturePacker.formatPercent(FeaturePacker.hitRate(finalSeed)),
-                    enrichText = when {
-                        !settings.searchEnabled -> "联网已关闭 · 纯本地识别"
-                        enrich.fetched == 0 && enrich.fromCache == 0 && enrich.deviceNote == null ->
-                            "本地已全部识别 · 未联网"
-                        else -> buildString {
-                            append("联网识别 ")
-                            append(enrich.fetched + enrich.fromCache)
-                            append(" 项 · ")
-                            if (enrich.fetched > 0) append("${enrich.elapsedMs} ms") else append("走缓存")
-                        }
-                    },
+                    enrichText = enrichLine(enrich),
                 )
 
-                generate(finalSeed, enrich.deviceNote, started)
+                generate(ctx, finalSeed, enrich.deviceNote, started)
             } catch (t: Throwable) {
                 if (cancelRequested) return@launch
                 _state.value = _state.value.copy(
@@ -246,75 +240,85 @@ class PersonaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun downloadModel() {
-        val ctx = getApplication<Application>()
+    private fun deviceLine(facts: DeviceFacts): String = buildString {
+        append("Android ${facts.androidRelease}")
+        append(" · ").append(facts.abis.firstOrNull() ?: "arm64-v8a")
+        append(" · ").append(facts.cores).append(" 核")
+        append(" · ").append(String.format(Locale.US, "%.0f GB", facts.ramGb))
+        append(" · ").append(if (facts.languageTag.startsWith("zh")) "中文" else facts.languageTag)
+    }
+
+    private fun enrichLine(enrich: Enrichment): String = when {
+        enrich.fetched == 0 && enrich.fromCache == 0 && enrich.deviceNote == null -> "本地已全部识别 · 未联网"
+        else -> buildString {
+            append("联网识别 ").append(enrich.fetched + enrich.fromCache).append(" 项 · ")
+            if (enrich.fetched > 0) append("${enrich.elapsedMs} ms") else append("走缓存")
+        }
+    }
+
+    private suspend fun downloadModel(ctx: Context) {
         _state.value = _state.value.copy(
             phase = Phase.DOWNLOADING,
             status = "首次使用，正在下载模型",
-            progress = 0f,
+            progress = 0.08f,
         )
         ModelManager.download(ctx, onProgress = { p ->
             val mb = p.downloaded / 1024.0 / 1024.0
             val total = p.total / 1024.0 / 1024.0
             _state.value = _state.value.copy(
-                progress = p.fraction,
+                progress = 0.08f + p.fraction * 0.52f,
                 transferText = String.format(Locale.US, "%.0f / %.0f MB", mb, total),
             )
         })
-        _state.value = _state.value.copy(modelReady = true, progress = 0f, transferText = "")
+        _state.value = _state.value.copy(modelReady = true, transferText = "")
     }
 
-    private suspend fun loadModel() {
-        if (LlamaBridge.nativeIsLoaded()) {
-            _state.value = _state.value.copy(phase = Phase.LOADING, status = "模型已在内存中")
-            return
-        }
-        _state.value = _state.value.copy(phase = Phase.LOADING, status = "正在把模型读进内存…")
-        val ctx = getApplication<Application>()
+    private suspend fun loadModel(ctx: Context) {
+        if (LlamaBridge.nativeIsLoaded()) return
         val path = ModelManager.modelFile(ctx).absolutePath
         val rc = withContext(Dispatchers.Default) { LlamaBridge.nativeLoadModel(path) }
         if (rc != 0) throw IllegalStateException("模型加载失败（code=$rc）")
-        _state.value = _state.value.copy(
-            modelLoaded = true,
-            nativeInfo = LlamaBridge.systemInfo(),
-        )
+        _state.value = _state.value.copy(modelReady = true)
     }
 
-    private suspend fun generate(seed: AnalysisSeed, deviceNote: String?, started: Long) {
-        val prompt = PromptBuilder.build(seed, deviceNote)
-        val maxTokens = settings.maxTokens
-        val threads = if (settings.threads > 0) {
-            settings.threads
+    private suspend fun generate(ctx: Context, seed: AnalysisSeed, deviceNote: String?, started: Long) {
+        val s = Settings(ctx)
+        val thinking = s.showThinking
+        val prompt = PromptBuilder.build(seed, deviceNote, thinking)
+        val maxTokens = if (thinking) max(s.maxTokens, 640) else s.maxTokens
+        val threads = if (s.threads > 0) {
+            s.threads
         } else {
             val cores = Runtime.getRuntime().availableProcessors()
             max(2, min(4, cores - 2))
         }
-        val nCtx = 2048
 
         _state.value = _state.value.copy(
             phase = Phase.GENERATING,
-            status = "正在生成画像…",
-            progress = 0f,
+            status = if (thinking) "正在思考并生成…" else "正在生成画像…",
+            progress = 0.7f,
         )
 
-        val builder = StringBuilder()
-        var firstTokenAt = 0L
+        val raw = StringBuilder()
+        var firstChunk = 0L
         var lastPublish = 0L
 
         val sink = LlamaBridge.TokenSink { piece ->
             if (cancelRequested) {
                 false
             } else {
-                builder.append(piece)
+                raw.append(piece)
                 val now = System.currentTimeMillis()
-                if (firstTokenAt == 0L) {
-                    firstTokenAt = now
-                    _state.value = _state.value.copy(elapsedMs = now - started)
-                }
+                if (firstChunk == 0L) firstChunk = now
                 if (now - lastPublish > 66) {
                     lastPublish = now
+                    val (t, a) = PromptBuilder.split(raw.toString())
+                    val frac = (raw.length / 3.0f).coerceAtMost(220f) / 220f
                     _state.value = _state.value.copy(
-                        streamed = PromptBuilder.stripThinking(builder.toString()),
+                        thinking = t,
+                        answer = a,
+                        progress = 0.7f + frac * 0.28f,
+                        elapsedMs = now - started,
                     )
                 }
                 true
@@ -330,32 +334,27 @@ class PersonaViewModel(app: Application) : AndroidViewModel(app) {
                 topK = 40,
                 minP = 0.05f,
                 threads = threads,
-                nCtx = nCtx,
+                nCtx = 2048,
                 sink = sink,
             )
         }
 
         val finished = System.currentTimeMillis()
-        val finalText = PromptBuilder.stripThinking(builder.toString())
-        if (rc != 0 && finalText.isBlank()) {
-            _state.value = _state.value.copy(
-                phase = Phase.ERROR,
-                error = "生成失败（code=$rc）",
-                status = "生成失败",
-            )
+        val (t, a) = PromptBuilder.split(raw.toString())
+        if (rc != 0 && a.isBlank()) {
+            _state.value = _state.value.copy(phase = Phase.ERROR, error = "生成失败（code=$rc）", status = "生成失败")
             return
         }
-
-        val genMs = if (firstTokenAt > 0) finished - firstTokenAt else finished - started
-        val approxTokens = finalText.length / 1.6f
-        val tps = if (genMs > 0) approxTokens / (genMs / 1000f) else 0f
-
+        val genMs = if (firstChunk > 0) finished - firstChunk else finished - started
+        val approxTokens = a.length / 1.6f
         _state.value = _state.value.copy(
             phase = Phase.DONE,
             status = "完成",
-            streamed = finalText,
+            thinking = t,
+            answer = a,
+            progress = 1f,
             elapsedMs = finished - started,
-            tokensPerSec = tps,
+            tokensPerSec = if (genMs > 0) approxTokens / (genMs / 1000f) else 0f,
         )
     }
 
@@ -364,7 +363,6 @@ class PersonaViewModel(app: Application) : AndroidViewModel(app) {
         return when {
             m == null -> t.javaClass.simpleName
             m.contains("ENOSPC") -> "存储空间不足"
-            m.contains("HTTP 4") -> "模型下载被拒绝（$m）"
             m.contains("Unable to resolve host") || m.contains("timeout") -> "网络不可用，可稍后重试下载"
             else -> m
         }

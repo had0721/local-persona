@@ -1,11 +1,18 @@
 package com.localpersona.app
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,11 +27,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,7 +47,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,28 +54,27 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
+import com.localpersona.app.engine.AnalysisEngine
+import com.localpersona.app.engine.Phase
+import com.localpersona.app.engine.UiState
 import com.localpersona.app.llm.ModelManager
+import com.localpersona.app.service.AnalysisService
 import com.localpersona.app.ui.Accent
 import com.localpersona.app.ui.Mono
 import com.localpersona.app.ui.PersonaTheme
-import com.localpersona.app.ui.PersonaViewModel
-import com.localpersona.app.ui.Phase
-import com.localpersona.app.ui.UiState
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             PersonaTheme {
-                val vm: PersonaViewModel = viewModel()
-                PersonaScreen(vm)
+                PersonaScreen(this)
             }
         }
     }
@@ -77,9 +82,24 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PersonaScreen(vm: PersonaViewModel) {
-    val state by vm.state.collectAsStateWithLifecycle()
+private fun PersonaScreen(activity: ComponentActivity) {
+    val state by AnalysisEngine.state.collectAsStateWithLifecycle()
     var showSettings by remember { mutableStateOf(false) }
+    var showThinkingBody by remember { mutableStateOf(false) }
+
+    val notifPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
+    fun startAnalysis() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        AnalysisService.start(activity)
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -90,12 +110,9 @@ private fun PersonaScreen(vm: PersonaViewModel) {
                 ),
                 title = {
                     Column {
+                        Text("本地画像", style = MaterialTheme.typography.headlineSmall)
                         Text(
-                            "本地画像",
-                            style = MaterialTheme.typography.headlineSmall,
-                        )
-                        Text(
-                            "ON-DEVICE · 不联网 · 零运行时权限",
+                            "ON-DEVICE · 不联网 · 后台可运行",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -125,17 +142,24 @@ private fun PersonaScreen(vm: PersonaViewModel) {
             MetricRow(state)
             if (state.enrichText.isNotBlank()) EnrichLine(state.enrichText)
             StepLine(state.step)
-            ActionButton(state, vm)
-            if (state.busy) ProgressBlock(state)
+            ActionButton(state) {
+                when {
+                    state.busy -> AnalysisService.cancel(activity)
+                    !state.modelReady -> AnalysisService.download(activity)
+                    else -> startAnalysis()
+                }
+            }
+            if (state.busy || state.finished) ProgressCard(state)
+            ThinkingCard(state, showThinkingBody) { showThinkingBody = it }
             ErrorBlock(state.error)
-            ResultBlock(state)
+            ResultCard(state)
             if (state.showSeed && state.seedText.isNotBlank()) SeedBlock(state.seedText)
             Footer(state)
         }
     }
 
     if (showSettings) {
-        SettingsDialog(state, vm) { showSettings = false }
+        SettingsDialog(state, activity) { showSettings = false }
     }
 }
 
@@ -168,7 +192,7 @@ private fun MetricRow(state: UiState) {
         Metric("类目命中", state.hitRate.ifBlank { "—" }, Modifier.weight(1f))
         Metric(
             "总耗时",
-            if (state.elapsedMs > 0) String.format("%.1f s", state.elapsedMs / 1000.0) else "—",
+            if (state.elapsedMs > 0) String.format(Locale.US, "%.1f s", state.elapsedMs / 1000.0) else "—",
             Modifier.weight(1f),
         )
     }
@@ -250,16 +274,14 @@ private fun StepLine(step: Int) {
 }
 
 @Composable
-private fun ActionButton(state: UiState, vm: PersonaViewModel) {
+private fun ActionButton(state: UiState, onClick: () -> Unit) {
     val label = when {
         state.busy -> "停止"
         !state.modelReady -> "下载模型（约 508 MB）"
         else -> "开始分析"
     }
     Button(
-        onClick = {
-            if (state.busy) vm.cancel() else vm.startAnalysis()
-        },
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth().height(50.dp),
         shape = RoundedCornerShape(10.dp),
         colors = if (state.busy) {
@@ -282,36 +304,95 @@ private fun ActionButton(state: UiState, vm: PersonaViewModel) {
 }
 
 @Composable
-private fun ProgressBlock(state: UiState) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (state.phase == Phase.DOWNLOADING) {
-            LinearProgressIndicator(
-                progress = { state.progress },
-                modifier = Modifier.fillMaxWidth().height(3.dp),
-                color = Accent,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            )
-        } else {
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth().height(3.dp),
-                color = Accent,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-            )
-        }
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                state.status,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f),
-            )
-            if (state.transferText.isNotBlank()) {
+private fun ProgressCard(state: UiState) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    state.transferText,
-                    style = MaterialTheme.typography.bodySmall,
+                    when (state.phase) {
+                        Phase.DONE -> "已完成"
+                        Phase.ERROR -> "已中断"
+                        else -> "进行中"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (state.phase == Phase.DONE) Accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "${(state.progress * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
                     fontFamily = Mono,
+                    color = Accent,
+                )
+            }
+            LinearProgressIndicator(
+                progress = { state.progress.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().height(4.dp),
+                color = Accent,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            )
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    state.status,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                if (state.transferText.isNotBlank()) {
+                    Text(
+                        state.transferText,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = Mono,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (state.busy && state.overlayEnabled) {
+                Text(
+                    "悬浮窗可以拖到任意位置，— 收起，× 关掉（关掉后仍在后台继续）",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThinkingCard(state: UiState, expanded: Boolean, onToggle: (Boolean) -> Unit) {
+    if (!state.showThinking) return
+    if (state.thinking.isBlank() && state.phase != Phase.GENERATING) return
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (state.phase == Phase.GENERATING && state.answer.isBlank()) "正在思考…" else "推理过程",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { onToggle(!expanded) }) {
+                    Text(if (expanded) "收起" else "展开", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            if (expanded) {
+                SelectionContainer {
+                    Text(
+                        state.thinking.ifBlank { "…" },
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = Mono,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
@@ -335,8 +416,8 @@ private fun ErrorBlock(error: String?) {
 }
 
 @Composable
-private fun ResultBlock(state: UiState) {
-    if (state.streamed.isBlank() && state.phase != Phase.GENERATING) return
+private fun ResultCard(state: UiState) {
+    if (state.answer.isBlank() && state.phase != Phase.GENERATING) return
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
@@ -352,14 +433,10 @@ private fun ResultBlock(state: UiState) {
                 )
                 Spacer(Modifier.weight(1f))
                 if (state.phase == Phase.GENERATING) {
-                    Text(
-                        "生成中",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Accent,
-                    )
+                    Text("生成中", style = MaterialTheme.typography.labelSmall, color = Accent)
                 } else if (state.tokensPerSec > 0f) {
                     Text(
-                        String.format("%.1f tok/s", state.tokensPerSec),
+                        String.format(Locale.US, "%.1f tok/s", state.tokensPerSec),
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = Mono,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -369,7 +446,7 @@ private fun ResultBlock(state: UiState) {
             HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
             SelectionContainer {
                 Text(
-                    state.streamed.ifBlank { "…" },
+                    state.answer.ifBlank { "…" },
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -412,7 +489,6 @@ private fun Footer(state: UiState) {
             if (state.modelReady) "模型已就绪 · 推理全部在 CPU 上本地完成" else "首次使用需下载约 508 MB 模型",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Start,
         )
         Text(
             "读取的只有包名与机型，不含聊天、照片、位置或账号。",
@@ -423,37 +499,44 @@ private fun Footer(state: UiState) {
 }
 
 @Composable
-private fun SettingsDialog(state: UiState, vm: PersonaViewModel, onDismiss: () -> Unit) {
+private fun SettingsDialog(state: UiState, activity: ComponentActivity, onDismiss: () -> Unit) {
+    fun openOverlayPermission() {
+        val intent = Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:${activity.packageName}"),
+        )
+        runCatching { activity.startActivity(intent) }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("设置", style = MaterialTheme.typography.titleMedium) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("联网识别未知应用", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "只把包名和机型拿去查“这是什么”，2.4 秒硬上限，结果缓存 30 天",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(checked = state.searchEnabled, onCheckedChange = { vm.setSearchEnabled(it) })
+                ToggleRow(
+                    title = "悬浮窗进度条",
+                    desc = "叠在别的应用上层，可拖动、可收起、可关掉。需要「显示在其他应用上层」权限",
+                    checked = state.overlayEnabled,
+                ) { on ->
+                    AnalysisEngine.setOverlayEnabled(on)
+                    if (on && !Settings.canDrawOverlays(activity)) openOverlayPermission()
                 }
 
                 HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("显示送给模型的内容", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "方便核对“它到底看到了什么”",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(checked = state.showSeed, onCheckedChange = { vm.setShowSeed(it) })
-                }
+                ToggleRow(
+                    title = "显示推理过程",
+                    desc = "把模型的 thinking 段也显示出来。会多花 2~3 倍 token，明显更慢",
+                    checked = state.showThinking,
+                ) { on -> AnalysisEngine.setShowThinking(on) }
+
+                HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
+
+                ToggleRow(
+                    title = "显示送给模型的内容",
+                    desc = "方便核对“它到底看到了什么”",
+                    checked = state.showSeed,
+                ) { on -> AnalysisEngine.setShowSeed(on) }
 
                 HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
 
@@ -471,12 +554,13 @@ private fun SettingsDialog(state: UiState, vm: PersonaViewModel, onDismiss: () -
                         color = if (state.modelReady) Accent else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { vm.downloadModelOnly(); onDismiss() }) {
-                            Icon(Icons.Outlined.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("下载")
-                        }
-                        TextButton(onClick = { vm.deleteModel() }) {
+                        TextButton(onClick = {
+                            AnalysisService.download(activity)
+                            onDismiss()
+                        }) { Text("下载") }
+                        TextButton(onClick = {
+                            AnalysisEngine.deleteModel()
+                        }) {
                             Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("删除")
@@ -487,7 +571,7 @@ private fun SettingsDialog(state: UiState, vm: PersonaViewModel, onDismiss: () -
                 HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
 
                 Text(
-                    "本地画像 v0.1 · llama.cpp + Qwen3.5-0.8B",
+                    "本地画像 v0.2 · llama.cpp + Qwen3.5-0.8B",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -497,4 +581,25 @@ private fun SettingsDialog(state: UiState, vm: PersonaViewModel, onDismiss: () -
             TextButton(onClick = onDismiss) { Text("关闭") }
         },
     )
+}
+
+@Composable
+private fun ToggleRow(
+    title: String,
+    desc: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                desc,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
 }

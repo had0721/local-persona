@@ -3,9 +3,10 @@ package com.localpersona.app.llm
 import com.localpersona.app.data.AnalysisSeed
 
 /**
- * Qwen3.5 的对话格式。不用 jinja 模板，手工拼：
- * - 关闭 thinking（非思考模式会在 assistant 前缀后给一个空的 <think></think>）
- * - system 只讲规则，user 放种子数据
+ * Qwen3.5 的对话格式。不用 jinja 模板，手工拼。
+ *
+ * thinking 关闭时，assistant 前缀后面直接给一个空的 <think></think>，省 2~3 倍 token；
+ * 打开时留空，让模型自己生成思考段。
  */
 object PromptBuilder {
 
@@ -26,7 +27,7 @@ object PromptBuilder {
 5. 【边界】只写一句：以上是根据已安装应用的统计推测，不涉及任何账号与个人内容。
 全文不超过 300 字。"""
 
-    fun build(seed: AnalysisSeed, deviceNote: String? = null): String {
+    fun build(seed: AnalysisSeed, deviceNote: String? = null, thinking: Boolean = false): String {
         val user = buildString {
             append(seed.promptBlock(deviceNote))
             append("\n请开始分析。")
@@ -35,19 +36,21 @@ object PromptBuilder {
             append(IM_START).append("system\n").append(SYSTEM).append(IM_END).append('\n')
             append(IM_START).append("user\n").append(user).append(IM_END).append('\n')
             append(IM_START).append("assistant\n")
-            append("<think>\n\n</think>\n\n")
+            if (!thinking) append("<think>\n\n</think>\n\n")
         }
     }
 
-    /** 去掉模型可能自己吐出来的 think 段。 */
-    fun stripThinking(text: String): String {
-        val close = text.indexOf("</think>")
+    /** 把流式输出拆成「思考」和「正文」。 */
+    fun split(raw: String): Pair<String, String> {
+        val close = raw.indexOf("</think>")
         if (close >= 0) {
-            val head = text.substring(0, close)
-            if (head.contains("<think>") && head.indexOf("<think>") <= 2) {
-                return text.substring(close + "</think>".length).trimStart('\n', ' ')
-            }
+            val t = raw.substring(0, close).removePrefix("<think>").trim()
+            val a = raw.substring(close + "</think>".length).trimStart('\n', ' ')
+            return t to a
         }
-        return text
+        if (raw.startsWith("<think>")) {
+            return raw.removePrefix("<think>").trim() to ""
+        }
+        return "" to raw
     }
 }
