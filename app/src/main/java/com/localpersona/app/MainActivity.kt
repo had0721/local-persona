@@ -14,6 +14,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -145,38 +146,85 @@ private fun PersonaScreen(activity: ComponentActivity) {
             )
         },
     ) { inner ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(inner)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
-        ) {
-            DeviceStrip(state)
-            UpdateBanner(update, activity)
-            MetricRow(state)
-            if (state.enrichText.isNotBlank()) EnrichLine(state.enrichText)
-            StepLine(state.step)
-            ActionButton(state) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(inner)) {
+            val wide = maxWidth >= 600.dp
+            val hPad = if (wide) 32.dp else 20.dp
+            val gap = if (wide) 26.dp else 18.dp
+            val onMainButton: () -> Unit = {
                 when {
                     state.busy -> AnalysisService.cancel(activity)
                     !state.modelReady -> AnalysisService.download(activity)
                     else -> startAnalysis()
                 }
             }
-            if (state.busy || state.finished) ProgressCard(state)
-            ThinkingCard(state, showThinkingBody) { showThinkingBody = it }
-            ErrorBlock(state.error)
-            ResultCard(state)
-            if (state.showSeed && state.seedText.isNotBlank()) SeedBlock(state.seedText)
-            Footer(state)
+
+            if (wide) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = hPad, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    Column(
+                        modifier = Modifier.weight(0.44f).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(gap),
+                    ) {
+                        LeftPane(state, update, activity, onMainButton)
+                    }
+                    Column(
+                        modifier = Modifier.weight(0.56f).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(gap),
+                    ) {
+                        RightPane(state, showThinkingBody) { showThinkingBody = it }
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = hPad, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(gap),
+                ) {
+                    LeftPane(state, update, activity, onMainButton)
+                    RightPane(state, showThinkingBody) { showThinkingBody = it }
+                }
+            }
         }
     }
 
     if (showSettings) {
         SettingsDialog(state, activity, update) { showSettings = false }
     }
+}
+
+@Composable
+private fun LeftPane(
+    state: UiState,
+    update: UpdateState,
+    activity: ComponentActivity,
+    onMainButton: () -> Unit,
+) {
+    DeviceStrip(state)
+    UpdateBanner(update, activity)
+    MetricRow(state)
+    if (state.enrichText.isNotBlank()) EnrichLine(state.enrichText)
+    StepLine(state.step)
+    ActionButton(state, onMainButton)
+    if (state.busy || state.finished) ProgressCard(state)
+    Footer(state)
+}
+
+@Composable
+private fun RightPane(
+    state: UiState,
+    showThinkingBody: Boolean,
+    onThinkingToggle: (Boolean) -> Unit,
+) {
+    ThinkingCard(state, showThinkingBody, onThinkingToggle)
+    ErrorBlock(state.error)
+    ResultCard(state)
+    if (state.showSeed && state.seedText.isNotBlank()) SeedBlock(state.seedText)
 }
 
 @Composable
@@ -235,7 +283,7 @@ private fun EnrichLine(text: String) {
 private fun Metric(label: String, value: String, modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
     ) {
@@ -299,7 +347,7 @@ private fun ActionButton(state: UiState, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth().height(50.dp),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = if (state.busy) {
             ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -323,7 +371,7 @@ private fun ActionButton(state: UiState, onClick: () -> Unit) {
 private fun ProgressCard(state: UiState) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
     ) {
@@ -385,7 +433,7 @@ private fun ThinkingCard(state: UiState, expanded: Boolean, onToggle: (Boolean) 
     if (state.thinking.isBlank() && state.phase != Phase.GENERATING) return
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -418,7 +466,7 @@ private fun ThinkingCard(state: UiState, expanded: Boolean, onToggle: (Boolean) 
 private fun ErrorBlock(error: String?) {
     if (error.isNullOrBlank()) return
     Surface(
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
     ) {
@@ -436,7 +484,7 @@ private fun ResultCard(state: UiState) {
     if (state.answer.isBlank() && state.phase != Phase.GENERATING) return
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
     ) {
@@ -570,7 +618,7 @@ private fun ClaimRow(claim: PromptBuilder.Claim) {
 private fun SeedBlock(seed: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -749,7 +797,7 @@ private fun UpdateBanner(update: UpdateState, activity: ComponentActivity) {
     val scope = rememberCoroutineScope()
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.primaryContainer,
     ) {
         Row(
