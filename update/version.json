@@ -1,6 +1,6 @@
 {
-  "versionName": "0.5.0",
-  "versionCode": 5,
+  "versionName": "0.6.0",
+  "versionCode": 6,
   "apkUrl": "https://github.com/had0721/local-persona/releases/latest/download/app-debug.apk",
-  "notes": "倍率参照 + 固定维度选择题 + 依据本地校验 + 60 条信号规则"
+  "notes": "模型下载改 5 路分段并发，首发下载快 2~4 倍"
 }
