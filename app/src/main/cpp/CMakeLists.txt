@@ -13,6 +13,9 @@ if(NOT EXISTS "${LLAMA_DIR}/CMakeLists.txt")
     message(FATAL_ERROR "llama.cpp not found at ${LLAMA_DIR} — clone it first")
 endif()
 
+# 静态链接：否则 libpersona.so 会依赖 libllama.so，而它不会被打进 APK
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
 # 只要推理库：关掉 tests / examples / tools / server，省一大半编译时间
 set(LLAMA_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
