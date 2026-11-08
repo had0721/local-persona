@@ -460,8 +460,7 @@ private fun ResultCard(state: UiState) {
                 }
             }
             HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outline)
-            val claims = if (state.phase == Phase.GENERATING) emptyList() else PromptBuilder.parseClaims(state.answer)
-            if (claims.isEmpty()) {
+            if (state.claims.isEmpty()) {
                 SelectionContainer {
                     Text(
                         state.answer.ifBlank { "…" },
@@ -470,21 +469,49 @@ private fun ResultCard(state: UiState) {
                     )
                 }
             } else {
-                val lead = PromptBuilder.overview(state.answer)
-                if (lead.isNotBlank()) {
+                if (state.overview.isNotBlank()) {
                     Text(
-                        lead,
+                        state.overview,
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
-                claims.forEach { claim -> ClaimRow(claim) }
-                val edge = PromptBuilder.boundary(state.answer)
-                if (edge.isNotBlank()) {
+                if (state.dimensions.isNotEmpty()) DimensionRow(state.dimensions)
+                state.claims.forEach { claim -> ClaimRow(claim) }
+                if (state.boundaryNote.isNotBlank()) {
                     Text(
-                        edge,
+                        state.boundaryNote,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DimensionRow(dims: List<Pair<String, String>>) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        dims.take(4).forEach { (k, v) ->
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)) {
+                    Text(
+                        k,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        v,
+                        fontFamily = Mono,
+                        fontSize = 12.sp,
+                        color = Accent,
                     )
                 }
             }
@@ -516,6 +543,14 @@ private fun ClaimRow(claim: PromptBuilder.Claim) {
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(8.dp))
+                if (!claim.verified) {
+                    Text(
+                        "无依据",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
                 Text(
                     claim.confidence.ifBlank { "—" },
                     style = MaterialTheme.typography.labelSmall,

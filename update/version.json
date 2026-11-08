@@ -1,6 +1,6 @@
 {
-  "versionName": "0.4.0",
-  "versionCode": 4,
+  "versionName": "0.5.0",
+  "versionCode": 5,
   "apkUrl": "https://github.com/had0721/local-persona/releases/latest/download/app-debug.apk",
-  "notes": "内置 60 个常见应用的人群标签：典型年龄 + 人群备注，命中不再联网"
+  "notes": "倍率参照 + 固定维度选择题 + 依据本地校验 + 60 条信号规则"
 }

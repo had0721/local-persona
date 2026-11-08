@@ -15,6 +15,9 @@ data class AnalysisSeed(
     val unmappedPackages: List<String> = emptyList(),
     val ageMix: List<Pair<String, Int>> = emptyList(),
     val notable: List<AppProfile> = emptyList(),
+    val ratios: List<Pair<String, Double>> = emptyList(),
+    val belowAvg: List<Pair<String, Double>> = emptyList(),
+    val universalCount: Int = 0,
 ) {
     fun promptBlock(deviceNote: String? = null): String = buildString {
         append(facts.compact())
@@ -22,10 +25,20 @@ data class AnalysisSeed(
             append("\n机型参考：").append(deviceNote).append("（检索自公开资料）")
         }
         append("\n\n")
-        append("已安装第三方应用 $thirdPartyCount 个（另有 $systemCount 个系统预装，已忽略）。\n")
+        append("已安装第三方应用 $thirdPartyCount 个")
+        if (universalCount > 0) append("，其中 $universalCount 个是通用必备（微信/支付宝/地图/输入法一类，已剔除，无区分度）")
+        append("（另有 $systemCount 个系统预装，已忽略）。\n")
         if (categories.isNotEmpty()) {
             val dist = categories.joinToString("、") { "${it.first} ${it.second}" }
             append("类目分布（前 ${categories.size}）：$dist。\n")
+        }
+        if (ratios.isNotEmpty()) {
+            val r = ratios.joinToString("、") { "${it.first} ${fmt(it.second)}×" }
+            append("与普通用户相比明显偏高：$r。\n")
+        }
+        if (belowAvg.isNotEmpty()) {
+            val r = belowAvg.joinToString("、") { "${it.first} ${fmt(it.second)}×" }
+            append("明显低于平均：$r。\n")
         }
         if (ageMix.isNotEmpty()) {
             val mix = ageMix.joinToString("、") { "${it.first} 岁 ${it.second}" }
@@ -52,6 +65,8 @@ data class AnalysisSeed(
         }
     }
 
+    private fun fmt(v: Double): String = String.format(Locale.US, "%.1f", v)
+
     fun summary(): String {
         if (categories.isEmpty()) return "已扫描 $thirdPartyCount 个应用"
         val top = categories.take(3).joinToString("、") { it.first }
@@ -75,10 +90,15 @@ object FeaturePacker {
         val notableCats = HashSet<String>(8)
         val unmappedPkgs = ArrayList<String>(32)
 
+        var universal = 0
         for (app in thirdParty) {
             val prof = map.profileOf(app.pkg)
             if (prof == null) {
                 if (unmappedPkgs.size < MAX_UNMAPPED) unmappedPkgs.add(app.pkg)
+                continue
+            }
+            if (app.pkg in Baseline.universalPackages || prof.category in Baseline.universalCategories) {
+                universal++
                 continue
             }
             counts[prof.category] = (counts[prof.category] ?: 0) + 1
@@ -103,7 +123,17 @@ object FeaturePacker {
             .take(5)
             .map { it.key to it.value }
 
-        val signals = SignalRules.detect(thirdParty.map { it.pkg })
+        val signals = SignalRules.detect(thirdParty.map { it.pkg }).take(10).take(10)
+
+        val effective = (thirdParty.size - universal).coerceAtLeast(1)
+        val scored = counts.map { (cat, n) ->
+            val share = n.toDouble() * 100.0 / effective
+            cat to share / Baseline.baselineOf(cat)
+        }
+        val ratios = scored.filter { it.second >= 2.0 }
+            .sortedByDescending { it.second }.take(4)
+        val below = scored.filter { it.second <= 0.4 && it.second > 0.0 }
+            .sortedBy { it.second }.take(2)
 
         return AnalysisSeed(
             facts = facts,
@@ -111,10 +141,13 @@ object FeaturePacker {
             systemCount = system,
             categories = ordered,
             signals = signals,
-            unmappedCount = thirdParty.size - counts.values.sum(),
+            unmappedCount = thirdParty.size - counts.values.sum() - universal,
             unmappedPackages = unmappedPkgs,
             ageMix = ageOrdered,
             notable = notable,
+            ratios = ratios,
+            belowAvg = below,
+            universalCount = universal,
         )
     }
 

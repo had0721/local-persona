@@ -40,6 +40,10 @@ data class UiState(
     val appsCount: Int = 0,
     val thinking: String = "",
     val answer: String = "",
+    val overview: String = "",
+    val dimensions: List<Pair<String, String>> = emptyList(),
+    val claims: List<PromptBuilder.Claim> = emptyList(),
+    val boundaryNote: String = "",
     val enrichText: String = "",
     val transferText: String = "",
     val error: String? = null,
@@ -170,6 +174,10 @@ object AnalysisEngine {
                     progress = 0.03f,
                     answer = "",
                     thinking = "",
+                    overview = "",
+                    dimensions = emptyList(),
+                    claims = emptyList(),
+                    boundaryNote = "",
                     error = null,
                     tokensPerSec = 0f,
                 )
@@ -352,10 +360,34 @@ object AnalysisEngine {
             status = "完成",
             thinking = t,
             answer = a,
+            overview = PromptBuilder.overview(a),
+            dimensions = PromptBuilder.dimensions(a),
+            claims = verifyClaims(PromptBuilder.claims(a), seed),
+            boundaryNote = PromptBuilder.boundary(a),
             progress = 1f,
             elapsedMs = finished - started,
             tokensPerSec = if (genMs > 0) approxTokens / (genMs / 1000f) else 0f,
         )
+    }
+
+    /**
+     * 本地校验：把每条判断的「依据」拿去和输入里真实存在的类目/应用名比对。
+     * 比对不上的不删除，只标成「无依据」由界面提示——删掉可能误伤，标出来更有用。
+     */
+    private fun verifyClaims(claims: List<PromptBuilder.Claim>, seed: AnalysisSeed): List<PromptBuilder.Claim> {
+        val tokens = buildList {
+            addAll(seed.categories.map { it.first })
+            addAll(seed.notable.map { it.name })
+            addAll(seed.notable.map { it.category })
+            addAll(seed.ageMix.map { it.first })
+            add("倍")
+            add("年龄")
+            add("装机")
+            add("应用")
+        }.filter { it.isNotBlank() }
+        return claims.map { c ->
+            c.copy(verified = tokens.any { tk -> c.evidence.contains(tk) })
+        }
     }
 
     private fun humanize(t: Throwable): String {

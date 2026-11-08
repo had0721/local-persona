@@ -5,36 +5,57 @@ import com.localpersona.app.data.AnalysisSeed
 /**
  * Qwen3.5 的对话格式。不用 jinja 模板，手工拼。
  *
- * thinking 关闭时，assistant 前缀后面直接给一个空的 <think></think>，省 2~3 倍 token；
- * 打开时留空，让模型自己生成思考段。
+ * 输出被约束成「总览 + 固定维度选择题 + 带依据的判断」，比让它自由写四段话稳得多。
+ * thinking 关闭时，assistant 前缀后面直接给一个空的 <think></think>，省 2~3 倍 token。
  */
 object PromptBuilder {
 
     private const val IM_START = "<|im_start|>"
     private const val IM_END = "<|im_end|>"
 
-    private const val SYSTEM = """你是「本地画像」引擎。你会收到一组统计：设备型号、系统版本、已安装应用的类目分布、若干规则信号，可能还有一条来自公开检索的机型定位。
+    data class Claim(
+        val judgment: String,
+        val evidence: String,
+        val confidence: String,
+        val verified: Boolean = true,
+    )
 
-其中「典型年龄结构」和「代表性应用」来自本地应用库的公开人群标签，已经做过加权，可以直接当作依据引用。
+    private const val SYSTEM = """你是「本地画像」引擎。输入是一组统计：设备信息、类目分布、与普通用户的占比倍率、典型年龄结构、代表性应用、规则信号。
 
-据此推测这个使用者是什么样的人。输出格式必须严格照下面来：
+严格按下面格式输出，不要多写别的内容：
 
-【总览】一句话说这个人最突出的特征。
-
-【判断】一句话结论
-【依据】只能引用输入里出现过的类目名或信号
-【把握】高 或 中 或 低
-
-（上面这三行重复 3 次，共 3 条判断）
-
+【总览】一句话点出这个人最突出的特征
+【维度】年龄段=25-34；消费=品质；技术=开发者级；重心=事业
+【判断】一句结论
+【依据】只引用输入里出现过的类目名或应用名
+【把握】高
+【判断】第二句结论
+【依据】同上
+【把握】中
 【边界】以上是根据已安装应用的统计推测，不涉及任何账号与个人内容。
 
-硬性规则：
-1. 【依据】必须来自输入，输入里没有的一律不许写；找不到依据的判断就不要写。
-2. 绝不编造姓名、地址、公司、职业、账号。
-3. 不要写「游戏多所以是男性」这类没有依据的刻板推断。
-4. 不复述数字，直接给判断。
-5. 全文不超过 260 字。"""
+固定选项（必须从中选一个）：
+年龄段：<18 / 18-24 / 25-34 / 35-44 / 45+
+消费：节俭 / 均衡 / 品质 / 高端
+技术：普通 / 熟练 / 开发者级
+重心：学业 / 事业 / 家庭 / 兴趣 / 健康
+
+规则：
+1. 【依据】必须来自输入，找不到依据的判断不要写。
+2. 优先看倍率而不是绝对数量，3 倍以上才算特征。
+3. 绝不编造姓名、地址、公司、职业、账号。
+4. 不写「游戏多所以是男性」这类没有依据的刻板推断。
+5. 全文不超过 220 字。
+
+示例：
+输入：第三方应用 60 个；类目 游戏 5、工具 8、社交 6；倍率均低于 2 倍。
+输出：
+【总览】一个装机偏少、以工具和社交为主的普通上班族。
+【维度】年龄段=25-34；消费=均衡；技术=普通；重心=事业
+【判断】装机量偏少，对新应用兴趣不高
+【依据】第三方应用 60 个，没有高于平均 2 倍的类目
+【把握】中
+【边界】以上是根据已安装应用的统计推测，不涉及任何账号与个人内容。"""
 
     fun build(seed: AnalysisSeed, deviceNote: String? = null, thinking: Boolean = false): String {
         val user = buildString {
@@ -49,29 +70,38 @@ object PromptBuilder {
         }
     }
 
-    data class Claim(val judgment: String, val evidence: String, val confidence: String)
+    fun overview(text: String): String {
+        val m = Regex("【总览】(.*?)(?=【|$)", setOf(RegexOption.DOT_MATCHES_ALL)).find(text)
+        return m?.groupValues?.get(1)?.trim()?.take(120) ?: ""
+    }
+
+    fun dimensions(text: String): List<Pair<String, String>> {
+        val m = Regex("【维度】(.*?)(?=【|$)", setOf(RegexOption.DOT_MATCHES_ALL)).find(text) ?: return emptyList()
+        return m.groupValues[1].split('；', ';', '|')
+            .mapNotNull { seg ->
+                val idx = seg.indexOf('=')
+                if (idx <= 0) null else seg.substring(0, idx).trim() to seg.substring(idx + 1).trim()
+            }
+            .filter { it.first.isNotBlank() && it.second.isNotBlank() }
+            .take(6)
+    }
 
     private val claimRegex = Regex(
-        "【判断】\\s*(.+?)\\s*【依据】\\s*(.+?)\\s*【把握】\\s*(.+?)(?=【判断】|【边界】|$)",
+        "【判断】(.*?)【依据】(.*?)【把握】(.*?)(?=【判断】|【边界】|$)",
         setOf(RegexOption.DOT_MATCHES_ALL),
     )
 
-    fun parseClaims(text: String): List<Claim> =
+    fun claims(text: String): List<Claim> =
         claimRegex.findAll(text).map {
             Claim(
                 judgment = it.groupValues[1].trim().take(80),
                 evidence = it.groupValues[2].trim().take(120),
                 confidence = it.groupValues[3].trim().take(4),
             )
-        }.filter { it.judgment.isNotBlank() }.take(6).toList()
-
-    fun overview(text: String): String {
-        val m = Regex("【总览】\\s*(.+?)(?=【|$)", setOf(RegexOption.DOT_MATCHES_ALL)).find(text)
-        return m?.groupValues?.get(1)?.trim()?.take(120) ?: ""
-    }
+        }.filter { it.judgment.isNotBlank() }.take(5).toList()
 
     fun boundary(text: String): String {
-        val m = Regex("【边界】\\s*(.+?)$", setOf(RegexOption.DOT_MATCHES_ALL)).find(text)
+        val m = Regex("【边界】(.*?)$", setOf(RegexOption.DOT_MATCHES_ALL)).find(text)
         return m?.groupValues?.get(1)?.trim()?.take(120) ?: ""
     }
 
