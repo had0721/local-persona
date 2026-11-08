@@ -126,7 +126,7 @@ private fun PersonaScreen(activity: ComponentActivity) {
                     Column {
                         Text("本地画像", style = MaterialTheme.typography.headlineSmall)
                         Text(
-                            "ON-DEVICE · 不联网 · 后台可运行",
+                            "ON-DEVICE · 零权限读数 · 不联网 · 后台可运行",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

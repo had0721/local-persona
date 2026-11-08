@@ -10,13 +10,17 @@
 
 | 数据 | 来源 | 权限 |
 | --- | --- | --- |
-| 已安装应用包名 | `PackageManager.getInstalledPackages` | `QUERY_ALL_PACKAGES`（普通权限，无弹窗） |
+| 已安装应用包名 | `PackageManager.getInstalledPackages` | **无** —— 靠 `<queries>` 声明 MAIN intent |
 | 机型、品牌、系统版本、ABI | `Build.*` | 无 |
 | 屏幕、内存、存储、语言、时区、字体缩放 | `DisplayMetrics` / `ActivityManager` / `Configuration` | 无 |
 
 不读：账号、联系人、短信、相册、位置、剪贴板、使用时长、网络流量。
 
-> 「零权限」的说法不严谨——读应用列表必须声明 `QUERY_ALL_PACKAGES`。它不会弹窗，但 Google Play 上架需要申报用途。自签名安装无影响。
+> **关于「零权限」**：本应用没有申请 `QUERY_ALL_PACKAGES`。它在 manifest 里声明了
+> `<queries><intent><action android:name="android.intent.action.MAIN"/></intent></queries>`，
+> 于是所有「能从桌面启动」的应用都对它可见——约占已装应用的 87%，恰好覆盖了用户自己装的
+> 全部 App，拿不到的只是没有启动入口的底层系统组件。Google 对这个做法的答复是
+> "working as intended"，详见 [Fraunhofer 的分析](https://blog.appicaptor.com/2026/03/17/installed-apps-list-bypass/)。
 
 ---
 
@@ -105,5 +109,5 @@ app/src/main/
 
 - 0.8B 的画像会是「套路话」，靠固定四段模板 + 信号列表撑住质量；想更准要换 2B。
 - 只支持 arm64-v8a，32 位设备装不上。
-- `QUERY_ALL_PACKAGES` 在国内商店一般放行，Google Play 需申报。
+- 读数依赖 `<queries>` 的 MAIN 声明；若未来 Google 收紧该机制，覆盖率会下降。
 - 机型检索偶尔会抓到无关页面，缓存里可能留一条废话；清缓存即可。

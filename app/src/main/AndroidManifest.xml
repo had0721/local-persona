@@ -1,8 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 读取已安装应用列表：普通权限，无运行时弹窗。仅自签名安装可用，上架 Google Play 需申报。 -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!--
+      注意：这里刻意「不」申请 QUERY_ALL_PACKAGES。
+
+      下面的 <queries> 声明可以让本应用看到所有带 android.intent.action.MAIN
+      的应用（也就是所有能从桌面启动的 App），相当于绕过包可见性过滤。
+      Google 对此的官方答复是 "working as intended"，它不是漏洞，是查询机制的
+      设计空隙：能拿到约 87% 的已安装应用，恰好覆盖了几乎所有用户自己装的 App，
+      而那些拿不到的，基本都是没有启动入口的底层系统组件。
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+        </intent>
+    </queries>
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- 后台继续跑推理 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
